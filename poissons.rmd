@@ -1,0 +1,129 @@
+---
+title: "A look into the behaviour of Poisson distributions"
+author: "Ian Petrus Tan"
+date: "2024-06-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(kableExtra)
+```
+
+# Simple look into the shape of Poisson distributions by the value of the mean
+
+$X\sim \text{Poisson}(\lambda)$
+
+Where the $\lambda$ represents the mean of the distribution, or the expected value. It is also the variance of the distribution. 
+
+The Poisson distribution is a powerful distribution used to model count values. As a result, it is popular in many contexts, such as in sports, to model goals, yellow cards in football, or the number of hits in baseball. 
+
+Having briefly been introduced to the distribution in university, I decided that I wanted to explore the shapes of these distributions and how they relate to the mean of the distribution. 
+
+I also had the impression that the maximum PMF (probability mass function) of a particular Poisson distribution would always be the maximum at its mean, i.e. $P(X = \lambda)$ would always be the largest possible $P(X=x)$. 
+
+Today we can have a simple analysis and a few examples to see the behaviour of Poisson distributions. 
+
+# First example: $X \sim \text{Poisson}(\lambda)$
+
+```{r lambda_five}
+x_vals <- 0:10
+x_vals_wider <- 0:50
+pmfs <- dpois(x_vals, lambda = 5)
+plot(x_vals, pmfs, type = 'h', lwd = 2, col = 'blue')
+cat('The x value with the highest pmf is: ', x_vals[which.max(pmfs)])
+
+```
+
+In this example, we can see that there are two peaks in the PMF, but can't quite tell which is higher. We also want to see more cases than just one, which might be misleading. 
+
+# More generalised 
+
+```{r pressure}
+# Define lambda values
+lambdas <- seq(2,20,2)
+
+# Create a data frame to store PMF values
+x_upper_lim <- 30
+pmf_data <- data.frame(x = rep(0:x_upper_lim, length(lambdas)),
+                       lambda = rep(lambdas, each = length(0:x_upper_lim)))
+pmf_data$pmf <- dpois(x = pmf_data$x, lambda = pmf_data$lambda)
+
+
+max_pmf_x <- pmf_data %>% group_by(lambda) %>% 
+  summarise(x_max = x[which.max(pmf)], 
+            max_pmf = max(pmf))
+
+
+# Plot PMFs with geom_line and markers
+ggplot(pmf_data, aes(x, pmf, color = factor(lambda))) +
+  geom_line(size = 1) +
+  geom_point(data = max_pmf_x, aes(x = x_max, y = max_pmf, 
+                                   # shape = 'x_max'
+                                   ), 
+             shape = 'x', size = 5, col = "darkred") +
+  
+  geom_point(data = max_pmf_x, aes(x = lambda, y = max_pmf, 
+                                   # shape = 'lambda'
+                                   ),shape = 'm', 
+             size = 5, 
+             col = "orange") +
+  labs(x = "Number of Events (x)", y = "Probability",
+       title = "Poisson PMF for Different λ Values with Markers") +
+
+  theme_minimal() +
+  scale_color_discrete(name = "λ")
+```
+
+In addition to this, I am also curious how the prob of $P(X >= \lambda)$ varies as $\lambda$ varies. Are they all similiar? Or does the value gradually increase or decrease? We explore this below:
+
+# Table of values (Poisson)
+
+```{r sim-many-lambdas}
+library(dplyr)
+
+# Define lambda values and x values
+lambdas <- 0:50
+x_vals <- 0:100
+
+# Generate all combinations of lambda and x, and compute PMF
+pmf_data <- expand.grid(lambda = lambdas, x = x_vals) %>%
+  mutate(pmf = dpois(x, lambda))
+
+# Find the maximum PMF for each lambda and handle multiple x values
+max_pmf_data <- pmf_data %>%
+  group_by(lambda) %>%
+  filter(pmf == max(pmf)) %>%
+  summarise(x = paste(unique(x), collapse = ","), pmf = first(pmf), .groups = 'drop')
+
+# Compute P(X > lambda)
+prob_data <- data.frame(lambda = lambdas) %>%
+  mutate(prob_larger_lambda = 1 - ppois(q = lambda, lambda = lambda, lower.tail = TRUE))
+
+# Merge dataframes and create the comparison column
+result_df <- max_pmf_data %>%
+  left_join(prob_data, by = "lambda") %>%
+  rowwise() %>%  # This will ensure operations are performed row by row
+  mutate(comparison = {
+    xs_numeric <- as.numeric(unlist(strsplit(x, ",")))  # Convert x values to numeric
+    if (all(xs_numeric > lambda)) {
+      "larger"
+    } else if (all(xs_numeric < lambda)) {
+      "smaller"
+    } else if (all(xs_numeric == lambda)) {
+      "equal"
+    } else {
+      "mixed"
+    }
+  }) %>%
+  ungroup()
+kable(result_df, col.names = c('lambda', 'arg Max x(PMF)', 'max PMF', 'P(X>lambda)', 'arg Max x VS lambda'))
+```
+
+Interestingly, the value of $P(X>\lambda)$ increases with $\lambda$.
+Also, note that only doing this more thoroughly did we realise that multiple x values that can rise to the largest PMFs for a particular distribution. In many cases, we get 'mixed' (i.e. when there are multiple x, one of them happens to be the lambda value), and many cases of 'smaller', but we didn't encounter the possibility of having an argmax that is larger than lambda. 
+
+Hence, when given a lambda, e.g. if a goal distribution is Poisson(3), we know that the largest chance event will involve goals 3.
